@@ -4,7 +4,7 @@ A shared working environment for agents across your devices. Register machines, 
 
 The optional DSH Web host runs the agent and stores conversations centrally. Open the same conversation from another device, change its execution machine and directory, and continue with refreshed workspace context. The file browser follows the execution binding.
 
-[中文](README.md) · [Quickstart](docs/QUICKSTART.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
+[中文](README.md) · [Quickstart](docs/QUICKSTART.md) · [NAS access](docs/NAS.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Start an Environment
 
