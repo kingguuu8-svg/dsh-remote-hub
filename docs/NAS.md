@@ -27,6 +27,9 @@ Host nas
   IdentitiesOnly yes
   BatchMode yes
   StrictHostKeyChecking yes
+  ControlMaster auto
+  ControlPersist 10m
+  ControlPath ~/.ssh/nas-%C
 ```
 
 先核对 NAS 和中继的主机公钥，登记到 Host 的 `known_hosts`。NAS 用户与中继分别使用专用密钥；中继密钥可以只允许转发 NAS 的 SSH 端口，拒绝执行其他命令。私钥保留在 Host。
