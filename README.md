@@ -4,7 +4,7 @@
 
 可选的 DSH Web 界面把模型和会话放在服务器上运行。在任意已接入设备的项目目录执行 `dsh web --remote`，浏览文件、继续会话或切换执行机器。工作区切换会进入下一次模型请求的真实上下文，同一会话继续使用已有历史。
 
-[English](README.en.md) · [快速开始](docs/QUICKSTART.md) · [部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md)
+[English](README.en.md) · [快速开始](docs/QUICKSTART.md) · [NAS 读写](docs/NAS.md) · [部署](docs/DEPLOYMENT.md) · [架构](docs/ARCHITECTURE.md)
 
 ## 两种入口
 
