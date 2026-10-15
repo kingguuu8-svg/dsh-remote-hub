@@ -17,6 +17,8 @@ systemctl --user status agent-environment.service
 
 DSH 的模型密钥可写入权限为 600 的 `.local/platform/model.env`。服务在启动时读取该文件。要在退出 SSH 后保持用户服务，服务器管理员可以为该用户启用 linger。日志通过 `journalctl --user -u agent-environment.service` 查看，启动器会遮盖 Web 登录 token。
 
+服务器重启后无需登录也启动用户服务，需要管理员执行 `sudo loginctl enable-linger "$USER"`。用 `loginctl show-user "$USER" -p Linger` 和 `systemctl --user is-enabled agent-environment.service` 核对。生成的服务会在进程退出后重启，并关闭启动次数限制；手动 `systemctl stop` 仍会停止服务。网络恢复前的失败不应让服务永久停止。
+
 使用自定义运行时目录时，所有 `agent_environment.py` 命令传入同一个 `--directory`。生成的服务文件已经包含该路径。
 
 ## HTTPS 入口
@@ -48,6 +50,12 @@ python3 agent_environment.py prepare-devices \
 新的 Web 端口会写入配对结果、设备配置和 SSH 的 `permitopen`，安装器沿用该端口。旧部署缺少这一字段时继续使用 3080。
 
 ## 更新和恢复
+
+远端 SSH worker 每 5 秒检查一次工具协议，单次存活检查与协议初始化最多等待 30 秒；关闭旧连接等待 10 秒后会取消拥有该连接的任务。取消通知和工具变更通知同样有时限。目标恢复后，下次目录检查或工具请求重新连接；可见的 DSH 会话每 30 秒自动检查，因此可能经过数个检查周期才恢复在线。首次部署依赖的准备仍允许较长等待。服务重启与连接恢复不会自动重放模型请求或已发送的工具操作。
+
+重建远端连接由工作区网关独立管理，同一工作区的并发请求共用一次初始化。单次检查超时只结束等待，不会取消共享初始化；网关关闭时才取消初始化并清理 SSH 子进程。因此较慢的设备不会因连续的短时检查而反复从头连接。
+
+Host 重启会保留磁盘上的会话、绑定、输入权和草稿，正在执行的模型轮次和命令无法保证续跑。响应丢失时先检查真实文件，再决定是否继续。SSH 中继、VPN、HTTPS 代理和数据盘挂载也必须各自启用自启动；Host 服务不能替代这些依赖的恢复。
 
 更新前停止服务，并备份整个运行时目录。DSH 的会话在 `dsh-home`，工作区、绑定、文字草稿和配对信息在 `dsh-state`；`connection.md`、`model.env`、设备密钥和目标配置也属于备份。备份包含敏感数据，应保存在私有位置。
 

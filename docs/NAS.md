@@ -46,17 +46,21 @@ ssh nas 'hostname; node --version; python3 --version; test -d /srv/nas/data'
 [Unit]
 Description=Private NAS SSH forwarding
 After=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 ExecStart=/usr/bin/ssh -NT -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=2 -L 127.0.0.1:31922:10.8.0.20:22 nas-relay
 Restart=always
 RestartSec=5
+TimeoutStopSec=30
 
 [Install]
 WantedBy=default.target
 ```
 
 将服务保存为 `~/.config/systemd/user/dsh-nas-relay.service`，运行 `systemctl --user daemon-reload` 和 `systemctl --user enable --now dsh-nas-relay.service`。随后把 `nas` 别名的 `HostName` 改为 `127.0.0.1`、`Port` 改为 `31922`，移除该别名的 `ProxyJump`，并在下一节的目标配置中设置 `port: 31922`。将已经核对的 NAS 公钥登记为 `[127.0.0.1]:31922` 的主机密钥。
+
+Host 用户需要启用 linger，才能在服务器重启后自动启动用户服务。中继服务器和 NAS 的 SSH、VPN 也要启用系统自启动。掉线期间工具可能失败；连接恢复只重建连接，不重放先前的写入或命令。
 
 ## 登记共享目录
 
@@ -98,3 +102,41 @@ WantedBy=default.target
 在 DSH Web 中选择 NAS 和共享目录，也可以创建 NAS 会话或切换已有会话的执行位置。通过 `environment` 显式调用 NAS 工具时，当前会话的默认工作区保持原来的位置。
 
 验证时使用单独的临时目录，通过 Environment 写入、编辑并读回文件，再从 SMB 或 NAS SSH 独立核对内容。完成后删除自己的测试目录。NAS 离线会返回该目标的错误；响应丢失后先检查文件的实际状态，再决定是否重复写入。
+
+## 独立 WebDAV 备用通道
+
+NAS 可以同时用成熟的 WebDAV 服务提供同一共享目录，例如 Debian 仓库的 `rclone serve webdav`。WebDAV 服务直接运行在 NAS，HTTPS 代理通过 VPN 转发到它，绕过 Host、SSH 中继与 MCP worker。它仍依赖 NAS、数据盘、VPN 和 HTTPS 代理；整台 NAS 离线时所有文件协议都会不可用。
+
+使用独立 WebDAV 账户和密码，通过权限为 640 的 htpasswd 文件提供给服务，避免明文密码出现在命令参数。服务以共享目录所属用户运行，仅绑定 VPN 地址。可用的启动命令示例：
+
+```bash
+rclone serve webdav /srv/nas/data --config /dev/null \
+  --addr 10.8.0.20:17865 --baseurl /nas-dav \
+  --htpasswd /etc/nas-webdav/htpasswd \
+  --dir-cache-time 0s --vfs-cache-mode off
+```
+
+用系统服务管理它，设置 `Restart=always`、`RestartSec=5`、`StartLimitIntervalSec=0`、`RequiresMountsFor=/srv/nas/data` 和挂载点检查。服务应绑定数据盘挂载单元，盘卸载时停止；把服务加入挂载单元的 Wants，可在挂载重新启动时一同启动。HTTPS 代理保留 `/nas-dav/` 前缀，并转发到 VPN 上的 WebDAV 端口。不要将未加密的 WebDAV 端口直接暴露到公网。
+
+在 Host 私有目标配置中加入顶层 `storage`，保留已有 `targets`。该配置含凭据，权限必须为 600：
+
+```json
+{
+  "storage": {
+    "nas": {
+      "machine": "nas",
+      "workspace": "/srv/nas/data",
+      "webdav": {
+        "url": "https://files.example.com/nas-dav/",
+        "account": "nas-agent",
+        "key": "<dedicated-webdav-password>"
+      },
+      "smb": { "url": "smb://192.168.1.20/NAS", "account": "pi" }
+    }
+  }
+}
+```
+
+Environment 的 `action=list` 提供不含密码的存储目录；`{"action":"storage","target":"nas"}` 返回专用接入信息和操作说明。这个请求不连接 SSH，也不要求 MCP worker 在线。DSH 内置的 Environment 工具和外部 HTTP/MCP 入口均可发现它。专用凭据只通过已认证的 storage 请求返回，不能放入公开协议、项目文件或日志。
+
+Agent 可使用自己的 HTTP 工具或 curl：`PROPFIND` 列目录、`GET` 读、`PUT` 写、`MKCOL` 建目录、`MOVE` 改名、`DELETE` 删除。curl 凭据应写入私有、权限为 600 的 netrc 文件，避免放在 URL 或命令参数中。SMB 沿用现有 NAS 登录，与 WebDAV 凭据不同。这两种方式不提供 shell 或项目上下文注入。MCP 写入超时后切换到 WebDAV，必须先核对实际文件，避免重复操作；两个通道没有统一的文件锁。

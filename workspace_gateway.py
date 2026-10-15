@@ -35,6 +35,8 @@ class WorkspaceGateway(Gateway):
         self.machine = machine
         self.backends = {}
         self.lock = asyncio.Lock()
+        self.connecting: asyncio.Task | None = None
+        self.closed = False
         self.binding: dict | None = None
         self.clients = weakref.WeakSet()
         self.server = GatewayServer("remote-workspace")
@@ -106,6 +108,22 @@ class WorkspaceGateway(Gateway):
             ]
 
     async def ensure_connection(self) -> Backend:
+        if self.closed:
+            raise RuntimeError("Workspace gateway is shutting down")
+        if self.connecting is None or self.connecting.done():
+            backend = self.backends.get(self.machine)
+            if backend and backend.state == "ready":
+                return backend
+            # Initialization may outlast a browser's health-check deadline.
+            # The gateway owns it; cancelling one waiter cannot repeatedly
+            # tear down the connection that other sessions are waiting for.
+            self.connecting = asyncio.create_task(self.reconnect())
+            self.connecting.add_done_callback(
+                lambda task: task.exception() if not task.cancelled() else None
+            )
+        return await asyncio.shield(self.connecting)
+
+    async def reconnect(self) -> Backend:
         async with self.lock:
             backend = self.backends.get(self.machine)
             if backend and backend.state == "ready":
@@ -131,6 +149,13 @@ class WorkspaceGateway(Gateway):
                 raise RuntimeError("Workspace binding changed on reconnect")
             self.binding = binding
             return backend
+
+    async def close(self) -> None:
+        self.closed = True
+        if self.connecting and not self.connecting.done():
+            self.connecting.cancel()
+            await asyncio.gather(self.connecting, return_exceptions=True)
+        await super().close()
 
 
 def main():

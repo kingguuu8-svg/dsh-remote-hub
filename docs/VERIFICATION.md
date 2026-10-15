@@ -11,6 +11,8 @@ sh scripts/setup.sh dsh
 uv run ruff check .
 node worker.mjs --check-manifest
 .venv/bin/python verify_gateway_cancellation.py
+.venv/bin/python verify_gateway_restart.py
+node verify_storage_access.mjs
 .venv/bin/python verify_platform.py --dsh
 .venv/bin/python verify_directory_browser.py
 .venv/bin/python verify_environment_access.py
@@ -27,6 +29,8 @@ python3 scripts/build_release.py
 `verify_directory_browser.py` 使用真实 SSH 和 Pi 进程，验证目录连接复用、失效后自动恢复、取消和并发，以及恢复期间既有会话的命令继续执行。目录浏览使用独立连接，跳过项目上下文读取；只读目录请求允许恢复后重试一次，模型工具保留原来的执行行为。
 
 `verify_gateway_cancellation.py` 验证 MCP 写入端停止接收时，取消通知在有限时间内结束，保留原始取消或超时错误，并且不会关闭其他请求共用的会话。
+
+`verify_gateway_restart.py` 使用真实隔离 SSH 和 Pi worker，覆盖写操作期间进程退出、不重复写入、无响应 worker 的限时检测、SSH 服务停止再启动，以及连接关闭时限。`verify_storage_access.mjs` 验证目标工具离线时 HTTP/MCP 仍可取得独立 WebDAV 资料，并检查鉴权、未知存储与目录中的凭据隔离。实际设备的整机重启和 WebDAV 文件效果需要部署后单独验收。
 
 `verify_platform.py --dsh --asset-dir /path/to/asset-cache` 可以复用已经下载的官方 fd 归档，准备时仍核对 SHA256。复用依赖缓存与复用个人运行时是不同的验证条件；记录验证结果时应说明资源来源。
 

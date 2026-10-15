@@ -251,9 +251,9 @@ def service(args):
     def quote(value):
         return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
     command = [sys.executable, str(ROOT / "agent_environment.py"), "start", "--directory", str(directory)]
-    text = "\n".join(["[Unit]", "Description=DSH Remote Hub", "Wants=network-online.target", "After=network-online.target", "",
+    text = "\n".join(["[Unit]", "Description=DSH Remote Hub", "Wants=network-online.target", "After=network-online.target", "StartLimitIntervalSec=0", "",
                       "[Service]", "Type=simple", "WorkingDirectory=" + str(ROOT).replace("%", "%%"),
-                      "ExecStart=" + " ".join(quote(part) for part in command), "Restart=on-failure", "RestartSec=10", "UMask=0077",
+                      "ExecStart=" + " ".join(quote(part) for part in command), "Restart=always", "RestartSec=10", "TimeoutStopSec=30", "UMask=0077",
                       "", "[Install]", "WantedBy=default.target", ""])
     path = directory / "agent-environment.service"
     save(path, text)

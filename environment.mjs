@@ -48,12 +48,35 @@ export class Environment {
       ...Object.entries(this.configuration.targets ?? {}).map(([id, entry]) => ({ id, label: entry.label ?? id, workspace: entry.workspace })),
     ];
   }
+  storageCatalog() {
+    return Object.entries(this.configuration.storage ?? {}).map(([id, entry]) => ({
+      id, machine: entry.machine, workspace: entry.workspace,
+      ...(entry.webdav ? { webdav: { url: entry.webdav.url } } : {}),
+      ...(entry.smb ? { smb: { url: entry.smb.url, account: entry.smb.account } } : {}),
+    }));
+  }
+  storageAccess(id) {
+    const entry = Object.hasOwn(this.configuration.storage ?? {}, id) ? this.configuration.storage[id] : undefined;
+    if (!entry) throw new Error(`Unknown storage: ${id}. Use action=list to discover storage IDs.`);
+    const url = new URL(entry.webdav?.url);
+    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash
+      || !entry.webdav.account || !entry.webdav.key) throw new Error("Storage requires an HTTPS WebDAV URL and dedicated credentials");
+    return { id, ...entry, instructions: [
+      "Use your own HTTP/file client for this storage. WebDAV does not use the MCP worker or change the conversation's execution target.",
+      "WebDAV uses HTTP Basic with its own account/key, distinct from Environment and SMB credentials. Send them only to the WebDAV URL origin; never forward them on redirects or place them in URLs, command-line arguments, logs or project files. A private mode-600 curl netrc file is suitable.",
+      "Paths are relative to the shared directory. Percent-encode each filename segment. PROPFIND with Depth: 1 lists files; GET reads; MKCOL creates a directory; PUT writes; MOVE renames; DELETE removes. For MOVE, Destination is the absolute WebDAV URL of the new path.",
+      "Only file operations are available. Shell execution and project-context injection still require the machine tools. SMB is an additional LAN/VPN access route using the existing NAS login.",
+      "Before using WebDAV after an uncertain MCP write, inspect the actual file. Neither channel provides automatic replay, shared locks or conflict resolution. Use conditional HTTP requests where supported; a lost write response may have completed.",
+    ] };
+  }
   list() {
+    const storage = this.storageCatalog();
     return [...this.entries].map(([id, entry]) => ({
       id, kind: entry.kind, machine: entry.machine, workspace: entry.workspace,
       uri: entry.context?.binding?.uri ?? entry.url,
       availability: this.connections.has(id) ? "connected" : entry.lastError ? "unavailable" : "disconnected",
       ...(entry.lastError ? { error: entry.lastError } : {}),
+      ...(storage.some((item) => item.machine === entry.machine) ? { storage: storage.filter((item) => item.machine === entry.machine) } : {}),
     }));
   }
 
