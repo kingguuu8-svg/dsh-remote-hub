@@ -73,6 +73,7 @@ def verify(args):
         cli("doctor")
         cli("service")
         unit = (runtime / "agent-environment.service").read_text()
+        assert "Restart=always" in unit and "StartLimitIntervalSec=0" in unit and "TimeoutStopSec=30" in unit
         assert "%%" in unit and f"WorkingDirectory={str(ROOT).replace(chr(37), chr(37) * 2)}" in unit
         assert connection["key"] not in unit
         if shutil.which("systemd-analyze"):

@@ -136,9 +136,10 @@ export class RemoteWorkspaces extends TypertRemoteService {
     }
     ctx.tools.register(createMcpToolDefinition(ctx, {
       name: "environment", rawName: "environment",
-      description: "Inspect the shared machine ecosystem or explicitly call a registered workspace/MCP tool. list returns target IDs and tool schemas; call executes the specified tool on that target without changing this session's default machine.",
-      inputSchema: { type: "object", properties: { action: { enum: ["list", "call"] }, target: { type: "string" }, tool: { type: "string" }, args: { type: "object" } }, required: ["action"], additionalProperties: false },
+      description: "Inspect the shared machine ecosystem or explicitly call a registered workspace/MCP tool. list returns target IDs, tool schemas and independent storage routes. storage with a storage ID as target returns private HTTPS WebDAV access details for use by your HTTP/file client even when machine tools are offline. call executes the specified tool without changing this session's default machine.",
+      inputSchema: { type: "object", properties: { action: { enum: ["list", "call", "storage"] }, target: { type: "string" }, tool: { type: "string" }, args: { type: "object" } }, required: ["action"], additionalProperties: false },
       call: async (args, execution) => {
+        if (args.action === "storage") { this.reloadTargets(); return { content: [{ type: "text", text: JSON.stringify(this.environment.storageAccess(args.target)) }] }; }
         if (args.action === "call") return this.callTool(args.target, args.tool, args.args ?? {}, execution.signal);
         const data = await this.environment.discover(execution.signal);
         return { content: [{ type: "text", text: JSON.stringify(data) }] };

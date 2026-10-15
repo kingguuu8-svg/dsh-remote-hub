@@ -14,7 +14,7 @@ const sessionIdleMs = 30 * 60 * 1000;
 const inputSchema = {
   type: "object", additionalProperties: false, required: ["action"],
   properties: {
-    action: { enum: ["list", "context", "workspace", "call"] },
+    action: { enum: ["list", "context", "workspace", "call", "storage"] },
     target: { type: "string", minLength: 1, maxLength: 80 },
     machine: { type: "string", minLength: 1, maxLength: 80 },
     workspace: { type: "string", minLength: 1, maxLength: 16384 },
@@ -23,6 +23,7 @@ const inputSchema = {
   },
   allOf: [
     { if: { properties: { action: { const: "context" } } }, then: { required: ["target"] } },
+    { if: { properties: { action: { const: "storage" } } }, then: { required: ["target"] } },
     { if: { properties: { action: { const: "workspace" } } }, then: { required: ["machine", "workspace"] } },
     { if: { properties: { action: { const: "call" } } }, then: { required: ["target", "tool"] } },
   ],
@@ -70,6 +71,7 @@ function contract(url) {
     instructions: [
       "Use your existing HTTP or terminal tool to call the HTTP endpoint. MCP is also available. Your own agent, conversation and local tools remain with your client.",
       "POST application/json with action=list first. It returns a compact catalog of machines, stable target IDs and tool names. Use only IDs returned by the service.",
+      "The list may also contain storage entries for independent HTTPS WebDAV file access and SMB paths. Request action=storage with a storage ID as target to obtain dedicated access details, even if its machine tools are offline. Use your own HTTP/file client; storage is independent of MCP. Treat returned credentials as private.",
       "Before working on a target, request action=context for its full tool input schemas. Check its machine, absolute workspace, Git state and agents_files project instructions. Apply those instructions only to that workspace.",
       "Every tool call explicitly specifies a target ID. Relative paths belong to that target's workspace; your local tools still operate on your own machine. A workspace is a working directory, and tools use the target login user's OS permissions.",
       "For another existing directory, use action=workspace with the machine ID and directory. This registers a workspace without creating, switching or taking over a DSH conversation. Then request its context.",
@@ -161,7 +163,11 @@ export async function startEnvironmentAccess({ configFile, environment, callTool
     reloadTargets();
     if (input.action === "list") {
       const targets = await interruptible(environment.discover(signal), signal);
-      return { machines: environment.machines(), targets: targets.map((entry) => ({ ...entry, tools: entry.tools.map((tool) => tool.name) })) };
+      return { machines: environment.machines(), storage: environment.storageCatalog(), targets: targets.map((entry) => ({ ...entry, tools: entry.tools.map((tool) => tool.name) })) };
+    }
+    if (input.action === "storage") {
+      if (!Object.hasOwn(environment.configuration.storage ?? {}, input.target)) throw new AccessError(404, "unknown_storage", "Unknown storage. Use action=list to discover storage IDs.");
+      return { storage: environment.storageAccess(input.target) };
     }
     if (input.action === "workspace") {
       if (input.machine !== "cloud" && !environment.configuration.targets?.[input.machine]) {

@@ -272,22 +272,29 @@ class Backend:
                     read, write, read_timeout_seconds=timedelta(seconds=150)
                 ) as session:
                     self.session = session
-                    await session.initialize()
+                    # SSH can remain established while its remote worker is
+                    # gone or unresponsive. Bound protocol liveness separately
+                    # from model tools, which may legitimately run much longer.
+                    async with asyncio.timeout(30):
+                        await session.initialize()
+                        await self.update_tools()
                     self.state = "ready"
-                    await self.update_tools()
                     self.ready.set_result(None)
                     while not self.stop.is_set():
                         try:
                             await asyncio.wait_for(self.stop.wait(), timeout=5)
                         except TimeoutError:
-                            await self.update_tools()
+                            async with asyncio.timeout(30):
+                                await self.update_tools()
         except Exception as error:
             self.state = "failed"
-            self.error = str(error)
+            self.error = str(error) or "Remote worker liveness check timed out"
             if not self.ready.done():
                 self.ready.set_exception(error)
             LOG.warning("%s disconnected: %s", self.machine, error)
         finally:
+            if not self.ready.done():
+                self.ready.set_exception(RuntimeError("Remote worker closed during initialization"))
             self.session = None
             self.tools = []
             if connection_file:
@@ -332,8 +339,16 @@ class Backend:
         self.state = "disconnecting"
         await self.cancel_calls()
         self.stop.set()
-        if self.task:
-            await self.task
+        if self.task and not self.task.done():
+            # A stuck protocol read must not hold the reconnect lock forever.
+            # Cancellation runs cleanup inside the task that owns the MCP
+            # context managers; callers never tear those managers down directly.
+            try:
+                async with asyncio.timeout(10):
+                    await asyncio.shield(self.task)
+            except TimeoutError:
+                self.task.cancel()
+                await asyncio.gather(self.task, return_exceptions=True)
         self.state = "disconnected"
         self.error = None
 
@@ -482,7 +497,9 @@ class Gateway:
     async def notify(self) -> None:
         for client in list(self.clients):
             try:
-                await client.send_tool_list_changed()
+                # A disconnected consumer must not block backend recovery.
+                async with asyncio.timeout(1):
+                    await client.send_tool_list_changed()
             except Exception:
                 self.clients.discard(client)
 

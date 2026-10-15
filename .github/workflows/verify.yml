@@ -38,9 +38,12 @@ jobs:
           python3 scripts/check_release.py --history
           .venv/bin/python verify_release.py
           .venv/bin/python verify_gateway_cancellation.py
+          node verify_storage_access.mjs
       - name: Verify standalone environment
         if: matrix.mode == 'environment'
-        run: .venv/bin/python verify_platform.py
+        run: |
+          .venv/bin/python verify_platform.py
+          .venv/bin/python verify_gateway_restart.py
       - name: Verify native DSH and onboarding
         if: matrix.mode == 'dsh'
         run: |
