@@ -48,7 +48,10 @@ class CancellationClientSession(ClientSession):
         except (asyncio.CancelledError, McpError) as error:
             if isinstance(error, McpError) and error.error.code != 408:
                 raise
-            with anyio.CancelScope(shield=True):
+            # A dead stdio writer may stop consuming before its task group
+            # closes the stream. Never hold that group's teardown indefinitely
+            # while trying to deliver cancellation over the broken transport.
+            with anyio.move_on_after(1, shield=True):
                 try:
                     await self.send_notification(
                         types.ClientNotification(
