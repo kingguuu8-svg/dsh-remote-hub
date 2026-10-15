@@ -10,6 +10,7 @@ Linux 上安装 OpenSSH 服务端，并确保 `sshd` 可以由当前非 root 用
 sh scripts/setup.sh dsh
 uv run ruff check .
 node worker.mjs --check-manifest
+.venv/bin/python verify_gateway_cancellation.py
 .venv/bin/python verify_platform.py --dsh
 .venv/bin/python verify_directory_browser.py
 .venv/bin/python verify_environment_access.py
@@ -24,6 +25,8 @@ python3 scripts/build_release.py
 `verify_environment_access.py` 验证 Host 持有的环境，覆盖全部七个 Pi 工具、图片和编辑数据、请求边界、取消、并发、凭据撤销、错误状态和现有会话保持。`verify_device_onboarding.py` 验证配对权限、重复与并发安装、过期、恢复以及三个操作系统安装包的结构。
 
 `verify_directory_browser.py` 使用真实 SSH 和 Pi 进程，验证目录连接复用、失效后自动恢复、取消和并发，以及恢复期间既有会话的命令继续执行。目录浏览使用独立连接，跳过项目上下文读取；只读目录请求允许恢复后重试一次，模型工具保留原来的执行行为。
+
+`verify_gateway_cancellation.py` 验证 MCP 写入端停止接收时，取消通知在有限时间内结束，保留原始取消或超时错误，并且不会关闭其他请求共用的会话。
 
 `verify_platform.py --dsh --asset-dir /path/to/asset-cache` 可以复用已经下载的官方 fd 归档，准备时仍核对 SHA256。复用依赖缓存与复用个人运行时是不同的验证条件；记录验证结果时应说明资源来源。
 

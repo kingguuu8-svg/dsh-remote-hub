@@ -37,6 +37,7 @@ jobs:
           uv run ruff check .
           python3 scripts/check_release.py --history
           .venv/bin/python verify_release.py
+          .venv/bin/python verify_gateway_cancellation.py
       - name: Verify standalone environment
         if: matrix.mode == 'environment'
         run: .venv/bin/python verify_platform.py
